@@ -24,7 +24,7 @@ EXPECTED_MD5="395049d96aa78ba86c406321e5b09a8f"   # fallback only
 
 # If UCLA still hosts the file and you want auto-download when it is missing,
 # put the full URL here. Left empty -> install from a local file only.
-DOWNLOAD_URL=""
+DOWNLOAD_URL="https://logiclx.humnet.ucla.edu/auto_remote/desktop/20260114/InstallLogic2010_mac_20260114.zip"
 
 # Stable identifiers from the bundle's Info.plist / jar manifest.
 MAIN_CLASS="edu.ucla.phil.logic.LogicProgram"
