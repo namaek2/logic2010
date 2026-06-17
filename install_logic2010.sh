@@ -92,7 +92,6 @@ cat <<'EOF'
 This installation script is provided under the terms of the 3-Clause BSD License.
 Logic 2010 is provided under a freeware License available on its website.
 EOF
-confirm "Continue with installation?" || { err "Aborted."; exit 1; }
 
 # --------------------------------------------------- requirements & file -----
 have unzip || die "'unzip' is required. Install it with your package manager."
