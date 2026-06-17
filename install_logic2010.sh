@@ -24,10 +24,8 @@ EXPECTED_MD5="395049d96aa78ba86c406321e5b09a8f"   # fallback only
 
 # If UCLA still hosts the file and you want auto-download when it is missing,
 # put the full URL here. Left empty -> install from a local file only.
+# NOTE: the URL below is unverified — adjust it if UCLA's path differs.
 DOWNLOAD_URL="https://logiclx.humnet.ucla.edu/auto_remote/desktop/20260114/InstallLogic2010_mac_20260114.zip"
-
-# Stable identifiers from the bundle's Info.plist / jar manifest.
-MAIN_CLASS="edu.ucla.phil.logic.LogicProgram"
 
 # Defaults (overridable by flags).
 INSTALL_DIR="./logic2010"
@@ -163,20 +161,25 @@ else
     copy_tree "$APP_SRC" "$INSTALL_DIR"
     dequarantine "$INSTALL_DIR/$APP_BASENAME"
 
-    # Generate a launcher that uses the BUNDLED JRE with the exact system
-    # properties from the bundle's Info.plist. The bundle name is baked in,
-    # but the java binary is discovered at runtime so a future JRE bump
-    # (e.g. 1.8.0_151 -> something newer) keeps working, and the whole
-    # install directory stays relocatable.
+    # Generate the launcher. The body is written VERBATIM via a QUOTED heredoc
+    # ('RUNEOF') so none of its $... is touched by THIS script. That was the bug
+    # in the previous version: an *unquoted* heredoc without backslash-escapes
+    # expanded $JAVA, $APP, $(uname -s), $(find ...) and "$@" at generation time,
+    # producing an empty/garbage launcher (and a stray blank first line, so the
+    # shebang wasn't on line 1). With a quoted delimiter the launcher is emitted
+    # exactly as written and discovers the .app, the Java runtime and the
+    # truststore itself at run time, so it stays self-contained and relocatable.
     RUN="$INSTALL_DIR/runlogic2010.sh"
-
-    cat > "$RUN" <<EOF
-
+    cat > "$RUN" <<'RUNEOF'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP="$HERE/Logic 2010.app/Contents"
 
+APP_DIR="$(find "$HERE" -maxdepth 1 -type d -name '*.app' | head -1)"
+[ -n "$APP_DIR" ] || { echo "No .app bundle found next to this script." >&2; exit 1; }
+APP="$APP_DIR/Contents"
+
+# Pick a Java runtime: bundled JRE on macOS, system java elsewhere.
 JAVA=""
 if [ "$(uname -s)" = "Darwin" ]; then
     JAVA="$(find "$APP/PlugIns" -type f -path '*/bin/java' 2>/dev/null | head -1)"
@@ -184,11 +187,19 @@ fi
 if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
     JAVA="$(command -v java || true)"
 fi
-[ -n "$JAVA" ] || { echo "자바가 없습니다: sudo apt install default-jre" >&2; exit 1; }
+if [ -z "$JAVA" ]; then
+    echo "No Java runtime found. Install one, e.g.:" >&2
+    echo "  Debian/Ubuntu : sudo apt install default-jre" >&2
+    echo "  Fedora        : sudo dnf install java-latest-openjdk" >&2
+    echo "  Arch          : sudo pacman -S jre-openjdk" >&2
+    exit 1
+fi
 
-# UCLA가 서버 인증서를 핀해 둠 → 번들의 1개짜리 truststore를 자바에 지정
+# UCLA pins its server cert: the bundle ships a 1-cert truststore for
+# logiclx.humnet.ucla.edu. Without it a system JVM can't validate the server's
+# TLS cert ("PKIX path building failed") and the app exits at startup.
 TS="$(find "$APP/PlugIns" -type f -name cacerts -path '*/lib/security/*' 2>/dev/null | head -1)"
-    
+
 OPTS=( -Dconfig.dir="$APP/Resources" -Dprog.dir="$APP/Java"
        -Dlink.dir="$APP/Resources" -Droot.dir="$APP" )
 [ -n "$TS" ] && OPTS+=( -Djavax.net.ssl.trustStore="$TS"
@@ -196,11 +207,18 @@ OPTS=( -Dconfig.dir="$APP/Resources" -Dprog.dir="$APP/Java"
                         -Djavax.net.ssl.trustStorePassword=changeit )
 
 exec "$JAVA" "${OPTS[@]}" -cp "$APP/Java/logic.jar" edu.ucla.phil.logic.LogicProgram "$@"
-EOF
+RUNEOF
     chmod +x "$RUN"
     echo
     echo "Installation complete: run '$RUN' to start the program!"
 fi
 
-# Apple Silicon heads-up: the bundled JRE is an x86_64 binary, so on M-series
-# Macs it runs through Rosetta 2 (install once with: softwareupdate --install-rosetta).
+# Platform notes:
+#   * Apple Silicon: the bundled JRE is an x86_64 binary, so on M-series Macs it
+#     runs through Rosetta 2 (install once: softwareupdate --install-rosetta).
+#   * Linux/Windows: the bundled (macOS) JRE can't run there, so the launcher
+#     uses your system Java. Any modern JRE works (OpenJDK 8/11/17/21); you just
+#     need a graphical desktop session for the window to appear.
+#   * Server connection: at startup Logic 2010 contacts logiclx.humnet.ucla.edu
+#     over HTTPS using the pinned cert above. That leaf cert expires 2026-12-18;
+#     after that you'll need an updated package (or to import the new cert).
